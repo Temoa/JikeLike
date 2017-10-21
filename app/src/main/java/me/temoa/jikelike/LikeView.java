@@ -25,6 +25,7 @@ public class LikeView extends View {
 
     private int numHeight;
     private int numWidth;
+
     private int offset = 0;
 
     private int currentNumber = 0;
