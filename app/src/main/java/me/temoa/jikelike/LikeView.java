@@ -4,31 +4,41 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.Rect;
 import android.support.annotation.Nullable;
-import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.View;
 import android.view.animation.LinearInterpolator;
 
-
+@SuppressWarnings("unused")
 public class LikeView extends View {
 
     private static final String TAG = "LikeView";
 
+    private Paint mPaint;
+    private Path mPath;
+
+    private int singleTextHeight;
+    private int singleTextWidth;
+
     private int width, height;
 
-    private Paint mPaint;
-
-    private int numHeight;
-    private int numWidth;
-
-    private int offset = 0;
+    private Bitmap likeBitmap;
+    private Bitmap unlikeBitmap;
 
     private int currentNumber = 0;
+    private String originStr;
+    private String nextStr;
+    private String frontNoChangeStr;
+    private String lastOriginStr;
+    private String lastChangeStr;
+
+    private int offset = 0;
 
     private boolean isAnim = false;
     private boolean isPlaying = false;
@@ -47,12 +57,13 @@ public class LikeView extends View {
         mPaint = new Paint();
         mPaint.setTextSize(96);
 
+        mPath = new Path();
         calculationTextSize();
     }
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        setMeasuredDimension(300, numHeight);
+        setMeasuredDimension(300, singleTextHeight + 20);
     }
 
     @Override
@@ -60,58 +71,28 @@ public class LikeView extends View {
         super.onSizeChanged(w, h, oldw, oldh);
         width = w;
         height = h;
+
+        mPath.moveTo(0, height);
+        mPath.lineTo(width, height);
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        drawing(canvas);
+        anotherDrawing(canvas);
     }
 
-    private void drawing(Canvas canvas) {
-        int nextNumber = currentNumber + 1;
-        String currentNumberStr = String.valueOf(currentNumber);
-        String nextNumberStr = String.valueOf(nextNumber);
-
-        if (isAnim) {
-            int bitCount = numberOfBits(currentNumberStr, nextNumberStr);
-            Log.d(TAG, "drawing: bitCount: " + bitCount);
-
-            String frontText = currentNumberStr.substring(0, currentNumberStr.length() - bitCount);
-            Log.d(TAG, "drawing: frontText: " + frontText);
-
-            int beginIndex = currentNumberStr.length() - bitCount - 1 < 0 ? 0 : currentNumberStr.length() - bitCount - 1;
-            String behindText = currentNumberStr.substring(beginIndex, currentNumberStr.length());
-            Log.d(TAG, "drawing: beginIndex: " + beginIndex + " behindText: " + behindText);
-
-            int frontTextWidth = (int) mPaint.measureText(frontText);
-            int behindTextWidth = (int) mPaint.measureText(behindText);
-
-            int frontTextX = (width - numWidth) / 2;
-            int x1 = frontTextX + frontTextWidth;
-            int x2 = x1 + behindTextWidth;
-
-            canvas.drawText(frontText, frontTextX, numHeight, mPaint);
-            canvas.save();
-            canvas.clipRect(x1, 0, x2, height);
-            canvas.drawText(currentNumberStr, (width - numWidth) / 2, numHeight - offset, mPaint);
-            canvas.drawText(nextNumberStr, (width - numWidth) / 2, numHeight * 2 - offset, mPaint);
-            canvas.restore();
+    private void anotherDrawing(Canvas canvas) {
+        if (!isAnim) {
+            canvas.drawTextOnPath(originStr, mPath, 0, 0, mPaint);
         } else {
-            canvas.drawText(currentNumberStr, (width - numWidth) / 2, numHeight - offset, mPaint);
-            canvas.drawText(nextNumberStr, (width - numWidth) / 2, numHeight * 2 - offset, mPaint);
+            canvas.drawTextOnPath(frontNoChangeStr, mPath, 0, 0, mPaint);
+            int x1 = frontNoChangeStr.length() * singleTextWidth;
+            canvas.drawTextOnPath(lastOriginStr, mPath, x1, -offset, mPaint);
+            canvas.drawTextOnPath(lastChangeStr, mPath, x1, height - offset, mPaint);
         }
     }
 
-    private int numberOfBits(String currentNum, String nextNum) {
-        int diffBitCount = 0;
-        for (int i = 0; i < currentNum.length(); i++) {
-            if (currentNum.charAt(i) != nextNum.charAt(i)) {
-                diffBitCount++;
-            }
-        }
-        return diffBitCount;
-    }
 
     public void startAnim() {
         if (isPlaying) return;
@@ -131,12 +112,14 @@ public class LikeView extends View {
             public void onAnimationEnd(Animator animation) {
                 isAnim = false;
                 isPlaying = false;
+                originStr = nextStr;
             }
 
             @Override
             public void onAnimationCancel(Animator animation) {
                 isAnim = false;
                 isPlaying = false;
+                originStr = nextStr;
             }
         });
         isAnim = true;
@@ -144,21 +127,40 @@ public class LikeView extends View {
         numberAnim.start();
     }
 
+    private void calculationTextChange() {
+        int nextNumber = currentNumber + 1;
+        originStr = String.valueOf(currentNumber);
+        nextStr = String.valueOf(nextNumber);
+
+        if (originStr.length() != nextStr.length()) {
+            frontNoChangeStr = "";
+            lastOriginStr = originStr;
+            lastChangeStr = nextStr;
+        } else {
+            for (int i = 0; i < nextStr.length(); i++) {
+                char curChar = originStr.charAt(i);
+                char nextChar = nextStr.charAt(i);
+                if (curChar != nextChar) {
+                    frontNoChangeStr = originStr.substring(0, i);
+                    lastOriginStr = originStr.substring(i);
+                    lastChangeStr = nextStr.substring(i);
+                    break;
+                }
+            }
+        }
+    }
+
     private void calculationTextSize() {
-        Paint.FontMetrics fm = mPaint.getFontMetrics();
-        numHeight = (int) (fm.bottom - fm.top);
-
-        String targetStr = String.valueOf(currentNumber);
-        numWidth = (int) mPaint.measureText(targetStr);
-
         Rect rect = new Rect();
-        mPaint.getTextBounds(targetStr, 0, targetStr.length(), rect);
-        numHeight = rect.height();
+        mPaint.getTextBounds("0", 0, "0".length(), rect);
+        singleTextHeight = rect.height();
+        singleTextWidth = (int) mPaint.measureText("0");
     }
 
     public void setNumber(int number) {
         currentNumber = number;
         calculationTextSize();
+        calculationTextChange();
         invalidate();
     }
 }
